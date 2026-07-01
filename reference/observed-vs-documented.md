@@ -40,3 +40,25 @@ Firsthand observations from building the Ultima4_2d overworld. Each tagged:
 ## Texture import defaults — EDITOR-CONFIRMED (diverges from common assumption)
 - **[diverges — REVIEW]** In THIS Unity 6000.4 **2D URP** project a freshly-imported PNG defaults to: **textureType=Sprite, filterMode=Point, mipmapEnabled=False, wrapMode=Clamp, textureCompression=Uncompressed, spritePixelsPerUnit=100.** Verified by importing a throwaway 4x4 PNG and reading its TextureImporter. This is the 2D Behavior Mode default. It CONTRADICTS the common/general assumption (and a doc-worker's guess) that new textures default to Default-type / Bilinear / mips-on / Repeat / compressed. TAKEAWAY: in a 2D project the pixel-art-friendly settings are already the default — you rarely need to force Point/no-mip; the real gotcha is maxTextureSize (2048) silently downscaling large atlases.
 - **[gotcha]** `new TextureImporterSettings(); ApplyTextureType(Sprite)` returns filterMode=Point too, but that's the struct default, NOT proof of the applied import default — only a real fresh import (above) confirms it. Method matters when "confirming in the editor."
+
+## Technique: overlapping decoration via stamped multi-tilemap layers (DOGFOODED)
+Proven across 3 terrains this project (forest conifers, mountain crags, hill boulders).
+Renders many *overlapping* decoration sprites as TILES — chunk-culled, bakeable, visible in
+the editor, ~0 GameObjects — instead of thousands of SpriteRenderers.
+
+- **[extends-docs]** Stamp each multi-tile sprite block across **N stacked tilemap layers**.
+  Choose the layer by a **2D coloring** `(col & 1) + 2*(row % M)` so no two overlapping stamps
+  ever share a cell (no last-write-wins truncation), while higher (southern) base rows map to
+  higher layers so they draw in front (depth).
+- **[extends-docs]** N layers = N discrete depth strata, so a continuous depth gradient has an
+  unavoidable **sort-wrap every M rows**. Hide it with a **per-column phase jitter** on
+  `row % M` — the revealed seams scatter into natural variation instead of horizontal banding.
+- **[extends-docs]** **Anchor each sprite by its BASE (bottom), grow the art upward**, and gate
+  placement on the base's bottom-left/bottom-right corners being inside the target terrain.
+  Bases then fit the boundary and only tops overhang (clip tiles off water). Anchoring by the
+  top clips the base at edges and leaves floating art.
+- **[extends-docs]** **One set of overlap layers serves multiple disjoint terrains** — different
+  terrains never share cells, so all their decorations stamp into the same N layers and Y-sort
+  together as one consistent depth field.
+- **[perf]** Result: ~24 scene transforms (vs ~9,200 for the SpriteRenderer version),
+  chunk-culled, edit-mode visible; sparse layer data as base64+gzip in the .tmx is tiny.
